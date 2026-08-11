@@ -33,3 +33,8 @@ agent-readiness = "agent_readiness.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_readiness"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0"
+]
