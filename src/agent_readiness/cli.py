@@ -4,25 +4,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from agent_readiness.scanner import Finding, scan_repository
+
 app = typer.Typer(
     help="Assess how ready a software repository is for AI-assisted and agentic engineering."
 )
 
 console = Console()
-
-
-DIMENSIONS = [
-    ("Repository Context", 82, "PASS"),
-    ("Architecture", 74, "WARN"),
-    ("Testing", 91, "PASS"),
-    ("Security", 78, "WARN"),
-    ("Secrets Protection", 100, "PASS"),
-    ("MCP / Tool Governance", 45, "WARN"),
-    ("Agent Instructions", 85, "PASS"),
-    ("Human Review", 70, "WARN"),
-    ("Observability", 55, "WARN"),
-    ("Evidence", 80, "PASS"),
-]
 
 
 def _verdict(score: int) -> str:
@@ -31,6 +19,21 @@ def _verdict(score: int) -> str:
     if score >= 70:
         return "READY WITH CONDITIONS"
     return "NOT READY"
+
+
+def _overall_score(findings: list[Finding]) -> int:
+    if not findings:
+        return 0
+
+    return round(sum(finding.score for finding in findings) / len(findings))
+
+
+def _status_style(status: str) -> str:
+    if status == "PASS":
+        return "green"
+    if status == "WARN":
+        return "yellow"
+    return "red"
 
 
 @app.command()
@@ -43,14 +46,20 @@ def assess(
         readable=True,
         resolve_path=True,
         help="Repository directory to assess.",
-    )
+    ),
+    details: bool = typer.Option(
+        False,
+        "--details",
+        "-d",
+        help="Show evidence and recommendations for each readiness dimension.",
+    ),
 ) -> None:
     """
-    Assess a repository and display its current readiness score.
-
-    V0.1 uses a starter scoring model. Repository evidence detection
-    will replace these baseline values as the project evolves.
+    Assess a repository and display its Agent Readiness score.
     """
+
+    findings = scan_repository(path)
+    overall = _overall_score(findings)
 
     console.print()
     console.print("[bold]Agent Readiness[/bold]")
@@ -62,25 +71,55 @@ def assess(
     table.add_column("Score", justify="right")
     table.add_column("Status")
 
-    scores = []
+    for finding in findings:
+        style = _status_style(finding.status)
 
-    for dimension, score, status in DIMENSIONS:
-        scores.append(score)
-        table.add_row(dimension, str(score), status)
+        table.add_row(
+            finding.dimension,
+            str(finding.score),
+            f"[{style}]{finding.status}[/{style}]",
+        )
 
     console.print(table)
-
-    overall = round(sum(scores) / len(scores))
 
     console.print()
     console.print(f"[bold]Overall Readiness:[/bold] {overall} / 100")
     console.print(f"[bold]Verdict:[/bold] {_verdict(overall)}")
-    console.print()
 
-    console.print("[bold]Top recommendations[/bold]")
-    console.print("1. Define approved MCP and tool integrations.")
-    console.print("2. Add explicit AI-generated-code review guidance.")
-    console.print("3. Improve architecture context for cross-module changes.")
+    recommendations: list[str] = []
+
+    for finding in findings:
+        recommendations.extend(finding.recommendations)
+
+    if recommendations:
+        console.print()
+        console.print("[bold]Top recommendations[/bold]")
+
+        for index, recommendation in enumerate(recommendations[:5], start=1):
+            console.print(f"{index}. {recommendation}")
+
+    if details:
+        console.print()
+        console.rule("Readiness Evidence")
+
+        for finding in findings:
+            console.print()
+            console.print(
+                f"[bold]{finding.dimension}[/bold] "
+                f"({finding.score}/100 — {finding.status})"
+            )
+
+            if finding.evidence:
+                console.print("[bold]Evidence[/bold]")
+                for evidence in finding.evidence:
+                    console.print(f"  • {evidence}")
+            else:
+                console.print("[dim]No positive repository evidence detected.[/dim]")
+
+            if finding.recommendations:
+                console.print("[bold]Recommendations[/bold]")
+                for recommendation in finding.recommendations:
+                    console.print(f"  • {recommendation}")
 
 
 @app.command()
@@ -91,13 +130,52 @@ def explain(
     )
 ) -> None:
     """
-    Explain what a readiness dimension represents.
+    Explain a readiness dimension using the current repository.
     """
 
-    console.print(
-        f"[bold]{dimension}[/bold]\\n\\n"
-        "Detailed evidence-backed explanations are planned for V0.1."
-    )
+    findings = scan_repository(Path("."))
+
+    normalized = dimension.strip().lower()
+
+    matching = [
+        finding
+        for finding in findings
+        if normalized in finding.dimension.lower()
+    ]
+
+    if not matching:
+        console.print(
+            f"[red]Unknown readiness dimension:[/red] {dimension}"
+        )
+        console.print()
+        console.print("Available dimensions:")
+
+        for finding in findings:
+            console.print(f"  • {finding.dimension}")
+
+        raise typer.Exit(code=1)
+
+    finding = matching[0]
+
+    console.print()
+    console.print(f"[bold]{finding.dimension}[/bold]")
+    console.print(f"Score: {finding.score}/100")
+    console.print(f"Status: {finding.status}")
+
+    console.print()
+
+    if finding.evidence:
+        console.print("[bold]Evidence[/bold]")
+        for evidence in finding.evidence:
+            console.print(f"  • {evidence}")
+    else:
+        console.print("[dim]No positive repository evidence detected.[/dim]")
+
+    if finding.recommendations:
+        console.print()
+        console.print("[bold]Recommendations[/bold]")
+        for recommendation in finding.recommendations:
+            console.print(f"  • {recommendation}")
 
 
 @app.command()
