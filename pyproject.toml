@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-readiness"
+version = "0.1.0"
+description = "Open-source readiness and governance toolkit for engineering teams adopting AI coding agents."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Ruchi Tomar", email = "ruchi.sengar85@gmail.com" }
+]
+keywords = [
+  "ai",
+  "agents",
+  "agentic-engineering",
+  "developer-tools",
+  "governance",
+  "readiness",
+  "mcp",
+  "security"
+]
+
+dependencies = [
+  "typer>=0.12.0",
+  "rich>=13.7.0"
+]
+
+[project.scripts]
+agent-readiness = "agent_readiness.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_readiness"]
